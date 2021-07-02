@@ -25,6 +25,7 @@ import org.junit.*;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.SQLSyntaxErrorException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -378,5 +379,53 @@ public class JDBCPoolTest extends ClientTestBase {
           )
         )
       );
+  }
+  
+  @Test
+  public void testConnectionReturnedToPoolOnFailingQueryExecution(TestContext should) {
+    final Async test = should.async();
+
+    String sql = "SELECT FROM WHERE FOO BAR";
+
+    client
+      .query(sql)
+      .execute()
+      .onFailure(err -> {
+        should.assertTrue(err instanceof SQLSyntaxErrorException, "Broken SQL should fail with SQLSyntaxErrorException");
+        client
+          .query(sql)
+          .execute()
+          .onFailure(err2 -> {
+            should.assertTrue(err2 instanceof SQLSyntaxErrorException, "Broken SQL should fail with SQLSyntaxErrorException");
+            test.complete();
+          })
+          .onSuccess(rows -> should.fail("Broken SQL should fail"));
+      })
+      .onSuccess(rows -> should.fail("Broken SQL should fail"));
+  }
+
+  @Test
+  public void testConnectionReturnedToPoolOnFailingQueryExecutionWhenUsingWithConnection(TestContext should) {
+    final Async test = should.async();
+
+    String sql = "SELECT FROM WHERE FOO BAR";
+
+    client
+      .withConnection(conn -> conn
+        .query(sql)
+        .execute()
+        .onFailure(err -> {
+          should.assertTrue(err instanceof SQLSyntaxErrorException, "Broken SQL should fail with SQLSyntaxErrorException");
+          client
+            .withConnection(conn2 -> conn2
+              .query(sql)
+              .execute()
+              .onFailure(err2 -> {
+                should.assertTrue(err2 instanceof SQLSyntaxErrorException, "Broken SQL should fail with SQLSyntaxErrorException");
+                test.complete();
+              })
+              .onSuccess(rows -> should.fail("Broken SQL should fail")));
+      })
+      .onSuccess(rows -> should.fail("Broken SQL should fail")));
   }
 }
